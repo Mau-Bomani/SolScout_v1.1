@@ -1,0 +1,3 @@
+/home/leland/Desktop/Code/SolScout_v1.1/tg_gateway/build/CMakeFiles/tg_gateway.dir
+/home/leland/Desktop/Code/SolScout_v1.1/tg_gateway/build/CMakeFiles/edit_cache.dir
+/home/leland/Desktop/Code/SolScout_v1.1/tg_gateway/build/CMakeFiles/rebuild_cache.dir

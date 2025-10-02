@@ -1,0 +1,14 @@
+
+{
+  "name": "notifier",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "nlohmann-json",
+    "redis-plus-plus",
+    "libpqxx",
+    "fmt",
+    "spdlog",
+    "catch2",
+    "cpp-httplib"
+  ]
+}

@@ -1,0 +1,15 @@
+
+{
+  "name": "analytics",
+  "version": "1.0.0",
+  "dependencies": [
+    "nlohmann-json",
+    "fmt",
+    "spdlog",
+    "hiredis",
+    "redis-plus-plus",
+    "libpqxx",
+    "catch2",
+    "date"
+  ]
+}

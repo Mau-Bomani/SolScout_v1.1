@@ -1,0 +1,425 @@
+
+version: '3.8'
+
+networks:
+  soulscout_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  pgdata:
+    driver: local
+  redis_data:
+    driver: local
+
+services:
+  postgres:
+    image: docker.io/library/postgres:15-alpine
+    container_name: soulscout-postgres
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    environment:
+      POSTGRES_DB: soulsct
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    secrets:
+      - postgres_user
+      - postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./ops/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./ops/retention.sql:/docker-entrypoint-initdb.d/02-retention.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/postgres_user) -d soulsct"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 1g
+    cpus: '1.0'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: soulscout-redis
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    command: >
+      redis-server
+      --requirepass $(cat /run/secrets/redis_password)
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1 300 10 60 10000
+      --appendonly yes
+      --appendfsync everysec
+    secrets:
+      - redis_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 512m
+    cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  tg_gateway:
+    image: localhost/soulscout/tg_gateway:latest
+    container_name: soulscout_tg_gateway
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    environment:
+      SERVICE_NAME: tg_gateway
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_URL: redis://:$(cat /run/secrets/redis_password)@redis:6379
+      GATEWAY_MODE: ${GATEWAY_MODE:-poll}
+      WEBHOOK_PUBLIC_URL: ${WEBHOOK_PUBLIC_URL:-}
+      LISTEN_ADDR: 0.0.0.0
+      LISTEN_PORT: 8080
+      RATE_LIMIT_MSGS_PER_MIN: ${RATE_LIMIT_MSGS_PER_MIN:-20}
+      GLOBAL_ACTIONABLE_MAX_PER_HOUR: ${GLOBAL_ACTIONABLE_MAX_PER_HOUR:-5}
+      GUEST_DEFAULT_MINUTES: ${GUEST_DEFAULT_MINUTES:-30}
+      STREAM_REQ: soul.cmd.requests
+      STREAM_REP: soul.cmd.replies
+      STREAM_ALERTS: soul.outbound.alerts
+      STREAM_AUDIT: soul.audit
+      TG_BOT_TOKEN_FILE: /run/secrets/tg_bot_token
+      OWNER_TELEGRAM_ID_FILE: /run/secrets/owner_telegram_id
+    secrets:
+      - tg_bot_token
+      - owner_telegram_id
+      - redis_password
+    ports:
+      - "${TG_GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 256m
+    cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  portfolio:
+    image: localhost/soulscout/portfolio:latest
+    container_name: soulscout_portfolio
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    environment:
+      SERVICE_NAME: portfolio
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://$(cat /run/secrets/postgres_user):$(cat /run/secrets/postgres_password)@postgres:5432/soulsct
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      REDIS_COMMAND_CHANNEL: soul.cmd.requests
+      REDIS_REPLY_CHANNEL: soul.cmd.replies
+      REDIS_AUDIT_CHANNEL: soul.audit
+      SOLANA_RPC_URL: ${SOLANA_RPC_URLS}
+      PRICE_API_URL: https://api.coingecko.com/api/v3
+      PRICE_API_KEY_FILE: /run/secrets/coingecko_api_key
+      HEALTH_HOST: 0.0.0.0
+      HEALTH_PORT: 8081
+    secrets:
+      - postgres_user
+      - postgres_password
+      - redis_password
+      - coingecko_api_key
+    ports:
+      - "${PORTFOLIO_PORT:-8081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 512m
+    cpus: '1.0'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  ingestor:
+    image: localhost/soulscout/ingestor:latest
+    container_name: soulscout_ingestor
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    environment:
+      SERVICE_NAME: ingestor
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://$(cat /run/secrets/postgres_user):$(cat /run/secrets/postgres_password)@postgres:5432/soulsct
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      REDIS_STREAM: soul.market.updates
+      SOLANA_RPC_URLS: ${SOLANA_RPC_URLS}
+      RAYDIUM_API_URL: https://api.raydium.io/v2
+      ORCA_API_URL: https://api.orca.so/v1
+      JUPITER_API_URL: https://quote-api.jup.ag/v6
+      COINGECKO_API_URL: https://api.coingecko.com/api/v3
+      COINGECKO_API_KEY_FILE: /run/secrets/coingecko_api_key
+      GLOBAL_TICK_SECONDS: ${GLOBAL_TICK_SECONDS:-60}
+      OHLCV_INTERVAL_MINUTES: ${OHLCV_INTERVAL_MINUTES:-5}
+      SNAPSHOT_PERSIST_MINUTES: ${SNAPSHOT_PERSIST_MINUTES:-5}
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-10}
+      BASE_BACKOFF_SECONDS: ${BASE_BACKOFF_SECONDS:-1.0}
+      MAX_BACKOFF_SECONDS: ${MAX_BACKOFF_SECONDS:-300.0}
+      POOL_CACHE_MAX_SIZE: ${POOL_CACHE_MAX_SIZE:-10000}
+      POOL_CACHE_TTL_MINUTES: ${POOL_CACHE_TTL_MINUTES:-30}
+      MIN_TVL_THRESHOLD: ${MIN_TVL_THRESHOLD:-25000.0}
+      MIN_VOLUME_THRESHOLD: ${MIN_VOLUME_THRESHOLD:-1000.0}
+      HEALTH_HOST: 0.0.0.0
+      HEALTH_PORT: 8082
+    secrets:
+      - postgres_user
+      - postgres_password
+      - redis_password
+      - coingecko_api_key
+    ports:
+      - "${INGESTOR_PORT:-8082}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 1g
+    cpus: '1.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  analytics:
+    image: localhost/soulscout/analytics:latest
+    container_name: soulscout_analytics
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    environment:
+      SERVICE_NAME: analytics
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_URL: redis://:$(cat /run/secrets/redis_password)@redis:6379
+      STREAM_MARKET: soul.market.updates
+      STREAM_ALERTS: soul.alerts
+      STREAM_REQ: soul.cmd.requests
+      STREAM_REP: soul.cmd.replies
+      PG_DSN: postgresql://$(cat /run/secrets/postgres_user):$(cat /run/secrets/postgres_password)@postgres:5432/soulsct
+      ACTIONABLE_BASE_THRESHOLD: ${ACTIONABLE_BASE_THRESHOLD:-70}
+      RISK_ON_ADJ: ${RISK_ON_ADJ:--10}
+      RISK_OFF_ADJ: ${RISK_OFF_ADJ:-10}
+      GLOBAL_ACTIONABLE_MAX_PER_HOUR: ${GLOBAL_ACTIONABLE_MAX_PER_HOUR:-5}
+      COOLDOWN_ACTIONABLE_HOURS: ${COOLDOWN_ACTIONABLE_HOURS:-6}
+      COOLDOWN_HEADSUP_HOURS: ${COOLDOWN_HEADSUP_HOURS:-1}
+      WATCH_WINDOW_MIN: ${WATCH_WINDOW_MIN:-120}
+      REENTRY_GUARD_HOURS: ${REENTRY_GUARD_HOURS:-12}
+      MIN_LIQUIDITY_ACTIONABLE: ${MIN_LIQUIDITY_ACTIONABLE:-150000.0}
+      MIN_LIQUIDITY_HEADSUP: ${MIN_LIQUIDITY_HEADSUP:-25000.0}
+      MIN_VOLUME_ACTIONABLE: ${MIN_VOLUME_ACTIONABLE:-500000.0}
+      MIN_VOLUME_HEADSUP: ${MIN_VOLUME_HEADSUP:-50000.0}
+      MAX_IMPACT_PCT: ${MAX_IMPACT_PCT:-1.5}
+      MAX_SPREAD_PCT: ${MAX_SPREAD_PCT:-2.5}
+      MAX_ROUTE_HOPS: ${MAX_ROUTE_HOPS:-3}
+      MAX_ROUTE_DEVIATION: ${MAX_ROUTE_DEVIATION:-0.8}
+      MIN_AGE_HOURS: ${MIN_AGE_HOURS:-24}
+      YOUNG_TOKEN_HOURS: ${YOUNG_TOKEN_HOURS:-72}
+      MIN_C_YOUNG_RISKY: ${MIN_C_YOUNG_RISKY:-80}
+      MIN_M1H_PCT: ${MIN_M1H_PCT:-1.0}
+      MAX_M1H_PCT: ${MAX_M1H_PCT:-12.0}
+      MIN_M24H_PCT: ${MIN_M24H_PCT:-2.0}
+      MAX_M24H_PCT: ${MAX_M24H_PCT:-60.0}
+      MIN_FDV_LIQ: ${MIN_FDV_LIQ:-2.0}
+      MAX_FDV_LIQ: ${MAX_FDV_LIQ:-150.0}
+      PREFERRED_MIN_FDV_LIQ: ${PREFERRED_MIN_FDV_LIQ:-5.0}
+      PREFERRED_MAX_FDV_LIQ: ${PREFERRED_MAX_FDV_LIQ:-50.0}
+      MAX_TOP_HOLDER_PCT: ${MAX_TOP_HOLDER_PCT:-25.0}
+      MIN_C_TOP_HOLDER_OVERRIDE: ${MIN_C_TOP_HOLDER_OVERRIDE:-85}
+      MIN_S1S2_TOP_HOLDER_OVERRIDE: ${MIN_S1S2_TOP_HOLDER_OVERRIDE:-0.8}
+      DQ_START: ${DQ_START:-1.0}
+      DQ_PENALTY_PER_MISSING: ${DQ_PENALTY_PER_MISSING:-0.08}
+      MIN_DQ_FOR_ACTIONABLE: ${MIN_DQ_FOR_ACTIONABLE:-0.7}
+      MAX_UPSIDE_CAP: ${MAX_UPSIDE_CAP:-15.0}
+      NET_EDGE_K_FACTOR: ${NET_EDGE_K_FACTOR:-2.0}
+      LAG_PENALTY: ${LAG_PENALTY:-0.3}
+      HEADSUP_MIN: ${HEADSUP_MIN:-60}
+      HEADSUP_MAX: ${HEADSUP_MAX:-69}
+      HIGH_CONVICTION_MIN: ${HIGH_CONVICTION_MIN:-85}
+      ATR_RISK_PCT: ${ATR_RISK_PCT:-0.6}
+      LIQUIDITY_SIZE_FACTOR: ${LIQUIDITY_SIZE_FACTOR:-0.008}
+      MAX_POSITIONS: ${MAX_POSITIONS:-3}
+      MAX_DEPLOYED_PCT: ${MAX_DEPLOYED_PCT:-35.0}
+      DEFAULT_DEPLOYED_PCT: ${DEFAULT_DEPLOYED_PCT:-30.0}
+      MIN_SOL_FREE_PCT: ${MIN_SOL_FREE_PCT:-5.0}
+      MAX_SOL_FREE_PCT: ${MAX_SOL_FREE_PCT:-10.0}
+      THREAD_POOL_SIZE: ${THREAD_POOL_SIZE:-4}
+      LISTEN_ADDR: 0.0.0.0
+      LISTEN_PORT: 8083
+    secrets:
+      - postgres_user
+      - postgres_password
+      - redis_password
+    ports:
+      - "${ANALYTICS_PORT:-8083}:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 1g
+    cpus: '1.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  notifier:
+    image: localhost/soulscout/notifier:latest
+    container_name: soulscout_notifier
+    restart: unless-stopped
+    networks:
+      - soulscout_net
+    environment:
+      SERVICE_NAME: notifier
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_URL: redis://:$(cat /run/secrets/redis_password)@redis:6379
+      STREAM_ALERTS: soul.outbound.alerts
+      STREAM_AUDIT: soul.audit
+      TG_BOT_TOKEN_FILE: /run/secrets/tg_bot_token
+      OWNER_TELEGRAM_ID_FILE: /run/secrets/owner_telegram_id
+      ALERTS_CHANNEL_ID_FILE: /run/secrets/alerts_channel_id
+      AUDIT_CHANNEL_ID_FILE: /run/secrets/audit_channel_id
+      NOTIFICATION_DELAY_SECONDS: ${NOTIFICATION_DELAY_SECONDS:-30}
+      MAX_NOTIFICATIONS_PER_MINUTE: ${MAX_NOTIFICATIONS_PER_MINUTE:-10}
+      MAX_NOTIFICATIONS_PER_HOUR: ${MAX_NOTIFICATIONS_PER_HOUR:-100}
+      MAX_NOTIFICATIONS_PER_DAY: ${MAX_NOTIFICATIONS_PER_DAY:-1000}
+      MAX_NOTIFICATIONS_PER_WEEK: ${MAX_NOTIFICATIONS_PER_WEEK:-5000}
+      MAX_NOTIFICATIONS_PER_MONTH: ${MAX_NOTIFICATIONS_PER_MONTH:-20000}
+      MAX_NOTIFICATIONS_PER_YEAR: ${MAX_NOTIFICATIONS_PER_YEAR:-100000}
+      MAX_NOTIFICATIONS_PER_TOKEN_PER_HOUR: ${MAX_NOTIFICATIONS_PER_TOKEN_PER_HOUR:-5}
+      MAX_NOTIFICATIONS_PER_TOKEN_PER_DAY: ${MAX_NOTIFICATIONS_PER_TOKEN_PER_DAY:-20}
+      MAX_NOTIFICATIONS_PER_TOKEN_PER_WEEK: ${MAX_NOTIFICATIONS_PER_TOKEN_PER_WEEK:-100}
+      MAX_NOTIFICATIONS_PER_TOKEN_PER_MONTH: ${MAX_NOTIFICATIONS_PER_TOKEN_PER_MONTH:-500}
+      MAX_NOTIFICATIONS_PER_TOKEN_PER_YEAR: ${MAX_NOTIFICATIONS_PER_TOKEN_PER_YEAR:-2500}
+    secrets:
+      - tg_bot_token
+      - owner_telegram_id
+      - alerts_channel_id
+      - audit_channel_id
+      - redis_password
+    ports:
+      - "${NOTIFIER_PORT:-8084}:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 256m
+    cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+secrets:
+  postgres_user:
+    file: ./secrets/postgres_user
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_password:
+    file: ./secrets/redis_password
+  tg_bot_token:
+    file: ./secrets/tg_bot_token
+  owner_telegram_id:
+    file: ./secrets/owner_telegram_id
+  coingecko_api_key:
+    file: ./secrets/coingecko_api_key

@@ -1,0 +1,18 @@
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+
+DO $
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'soulscout_app') THEN
+        CREATE ROLE soulscout_app WITH LOGIN;
+    END IF;
+END
+$;
+
+GRANT CONNECT ON DATABASE soulsct TO soulscout_app;
+GRANT USAGE ON SCHEMA public TO soulscout_app;
+GRANT CREATE ON SCHEMA public TO soulscout_app;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO soulscout_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO soulscout_app;

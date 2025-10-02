@@ -1,0 +1,12 @@
+
+{
+  "name": "tg-gateway",
+  "version-string": "1.1.0",
+  "dependencies": [
+    "nlohmann-json",
+    "spdlog",
+    "cpr",
+    "redis-plus-plus",
+    "fmt"
+  ]
+}

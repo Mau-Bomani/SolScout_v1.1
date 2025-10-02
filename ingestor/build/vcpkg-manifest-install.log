@@ -1,0 +1,70 @@
+Detecting compiler hash for triplet x64-linux...
+Compiler found: /usr/bin/c++
+The following packages are already installed:
+  * vcpkg-cmake:x64-linux@2024-04-23
+  * vcpkg-cmake-config:x64-linux@2024-05-23
+  * vcpkg-cmake-get-vars:x64-linux@2025-05-29
+The following packages will be built and installed:
+    cpr[core,ssl]:x64-linux@1.12.0
+  * curl[core,non-http,openssl,ssl]:x64-linux@8.16.0
+  * fmt:x64-linux@12.0.0
+    gtest:x64-linux@1.17.0#1
+  * hiredis:x64-linux@1.3.0
+  * libpq[core,lz4,openssl,zlib]:x64-linux@16.9#1
+    libpqxx:x64-linux@7.10.1
+  * lz4:x64-linux@1.10.0
+    nlohmann-json:x64-linux@3.12.0#1
+  * openssl:x64-linux@3.5.3
+    redis-plus-plus:x64-linux@1.3.15
+    spdlog:x64-linux@1.15.3
+  * zlib:x64-linux@1.3.1
+Additional packages (*) will be modified to complete this operation.
+Restored 0 package(s) from /home/leland/.cache/vcpkg/archives in 56 us. Use --debug to see more details.
+Installing 1/13 openssl:x64-linux@3.5.3...
+Building openssl:x64-linux@3.5.3...
+-- Using cached openssl-openssl-openssl-3.5.3.tar.gz
+-- Cleaning sources at /var/home/leland/vcpkg/buildtrees/openssl/src/nssl-3.5.3-78bf900265.clean. Use --editable to skip cleaning for the packages you specify.
+-- Extracting source /var/home/leland/vcpkg/downloads/openssl-openssl-openssl-3.5.3.tar.gz
+-- Applying patch cmake-config.patch
+-- Applying patch command-line-length.patch
+-- Applying patch script-prefix.patch
+-- Applying patch windows/install-layout.patch
+-- Applying patch windows/install-pdbs.patch
+-- Applying patch unix/android-cc.patch
+-- Applying patch unix/move-openssldir.patch
+-- Applying patch unix/no-empty-dirs.patch
+-- Applying patch unix/no-static-libs-for-shared.patch
+-- Using source at /var/home/leland/vcpkg/buildtrees/openssl/src/nssl-3.5.3-78bf900265.clean
+-- Getting CMake variables for x64-linux
+-- Loading CMake variables from /var/home/leland/vcpkg/buildtrees/openssl/cmake-get-vars_C_CXX-x64-linux.cmake.log
+openssl requires Linux kernel headers from the system package manager.
+   They can be installed on Alpine systems via `apk add linux-headers`.
+   They can be installed on Ubuntu systems via `apt install linux-libc-dev`.
+
+-- Getting CMake variables for x64-linux-dbg
+-- Getting CMake variables for x64-linux-rel
+-- Configuring x64-linux-dbg
+CMake Error at scripts/cmake/vcpkg_execute_required_process.cmake:127 (message):
+    Command failed: /usr/bin/bash -c "V=1 ./../src/nssl-3.5.3-78bf900265.clean/vcpkg/configure  \"/usr/bin/perl\" \"/var/home/leland/vcpkg/buildtrees/openssl/src/nssl-3.5.3-78bf900265.clean/Configure\" \"linux-x86_64\" \"enable-static-engine\" \"enable-capieng\" \"no-tests\" \"no-docs\" \"enable-ec_nistp_64_gcc_128\" \"no-shared\" \"no-module\" \"no-apps\" \"--openssldir=/etc/ssl\" \"--libdir=lib\" \"--disable-silent-rules\" \"--verbose\" \"--disable-shared\" \"--enable-static\" \"--debug\" \"--prefix=/home/leland/Desktop/Code/SolScout_v1.1/ingestor/build/vcpkg_installed/x64-linux/debug\""
+    Working Directory: /var/home/leland/vcpkg/buildtrees/openssl/x64-linux-dbg
+    Error code: 1
+    See logs for more information:
+      /var/home/leland/vcpkg/buildtrees/openssl/config-x64-linux-dbg-out.log
+      /var/home/leland/vcpkg/buildtrees/openssl/config-x64-linux-dbg-err.log
+
+Call Stack (most recent call first):
+  scripts/cmake/vcpkg_configure_make.cmake:866 (vcpkg_execute_required_process)
+  ports/openssl/unix/portfile.cmake:111 (vcpkg_configure_make)
+  ports/openssl/portfile.cmake:79 (include)
+  scripts/ports.cmake:206 (include)
+
+
+error: building openssl:x64-linux failed with: BUILD_FAILED
+See https://learn.microsoft.com/vcpkg/troubleshoot/build-failures?WT.mc_id=vcpkg_inproduct_cli for more information.
+Elapsed time to handle openssl:x64-linux: 13 s
+Please ensure you're using the latest port files with `git pull` and `vcpkg update`.
+Then check for known issues at:
+  https://github.com/microsoft/vcpkg/issues?q=is%3Aissue+is%3Aopen+in%3Atitle+openssl
+You can submit a new issue at:
+  https://github.com/microsoft/vcpkg/issues/new?title=%5Bopenssl%5D%20build%20error%20on%20x64-linux&body=Copy%20issue%20body%20from%20%2Fhome%2Fleland%2FDesktop%2FCode%2FSolScout_v1.1%2Fingestor%2Fbuild%2Fvcpkg_installed%2Fvcpkg%2Fissue_body.md
+

@@ -1,0 +1,25 @@
+{
+    "files.associations": {
+        "fstream": "cpp",
+        "mutex": "cpp",
+        "deque": "cpp",
+        "string": "cpp",
+        "map": "cpp",
+        "random": "cpp",
+        "regex": "cpp",
+        "thread": "cpp",
+        "iomanip": "cpp",
+        "memory": "cpp",
+        "atomic": "cpp",
+        "vector": "cpp",
+        "cstdlib": "cpp",
+        "cstdint": "cpp",
+        "sstream": "cpp",
+        "algorithm": "cpp",
+        "chrono": "cpp",
+        "optional": "cpp",
+        "list": "cpp",
+        "cmath": "cpp",
+        "stdexcept": "cpp"
+    }
+}

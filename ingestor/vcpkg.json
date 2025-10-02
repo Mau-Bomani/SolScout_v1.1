@@ -1,0 +1,12 @@
+{
+    "name": "ingestor",
+    "version-string": "1.0.0",
+    "dependencies": [
+        "nlohmann-json",
+        "spdlog",
+        "libpqxx",
+        "redis-plus-plus",
+        "cpr",
+        "gtest"
+    ]
+}

@@ -1,0 +1,17 @@
+
+{
+  "name": "portfolio-service",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "nlohmann-json",
+    "cpr",
+    "redis-plus-plus",
+    "hiredis",
+    "libpqxx",
+    "fmt",
+    "spdlog",
+    "catch2",
+    "cpp-httplib",
+    "date"
+  ]
+}

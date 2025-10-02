@@ -1,0 +1,100 @@
+
+    void handle_alert(const Alert& alert) {
+        // Check global actionable limit
+        if (alert.severity == "actionable" || alert.severity == "high_conviction") {
+            if (!rate_limiter_.check_global_actionable_limit()) {
+                spdlog::warn("Global actionable limit reached, skipping alert");
+                return;
+            }
+            rate_limiter_.record_actionable();
+        }
+        
+        // Format alert message
+        std::string severity_emoji = "ℹ️";
+        if (alert.severity == "actionable") severity_emoji = "⚠️";
+        else if (alert.severity == "high_conviction") severity_emoji = "🚨";
+        
+        std::string message = fmt::format(
+            "{} <b>{}</b> Alert\n"
+            "Symbol: <code>{}</code>\n"
+            "Price: ${:.4f}\n"
+            "Confidence: {:.1f}%\n"
+            "Impact: {:.1f}%\n\n"
+            "{}",
+            severity_emoji, alert.severity, alert.symbol, 
+            alert.price, alert.confidence, alert.est_impact_pct,
+            fmt::join(alert.lines, "\n")
+        );
+        
+        telegram_client_.send_message(config_.owner_telegram_id, message);
+    }
+    
+    void audit_auth_denied(int64_t user_id) {
+        AuditEvent event;
+        event.event = "auth_denied";
+        event.actor.tg_user_id = user_id;
+        event.actor.role = "unknown";
+        event.ts = util::current_iso8601();
+        redis_bus_.publish_audit_event(event);
+    }
+    
+    void audit_command_used(const std::string& cmd, int64_t user_id, Role role) {
+        AuditEvent event;
+        event.event = "command_used";
+        event.actor.tg_user_id = user_id;
+        event.actor.role = (role == Role::OWNER) ? "owner" : "guest";
+        event.detail = nlohmann::json{{"command", cmd}};
+        event.ts = util::current_iso8601();
+        redis_bus_.publish_audit_event(event);
+    }
+    
+    void audit_guest_login(int64_t user_id) {
+        AuditEvent event;
+        event.event = "guest_login";
+        event.actor.tg_user_id = user_id;
+        event.actor.role = "guest";
+        event.ts = util::current_iso8601();
+        redis_bus_.publish_audit_event(event);
+    }
+};
+
+// Global gateway instance for signal handling
+std::unique_ptr<TelegramGateway> g_gateway;
+
+void signal_handler(int signal) {
+    spdlog::info("Received signal {}, shutting down...", signal);
+    if (g_gateway) {
+        g_gateway->shutdown();
+    }
+}
+
+int main() {
+    try {
+        // Load configuration
+        auto config = Config::from_env();
+        config.validate();
+        
+        // Create gateway
+        g_gateway = std::make_unique<TelegramGateway>(config);
+        
+        // Setup signal handlers
+        signal(SIGINT, signal_handler);
+        signal(SIGTERM, signal_handler);
+        
+        // Initialize and run
+        if (!g_gateway->initialize()) {
+            spdlog::error("Failed to initialize gateway");
+            return 1;
+        }
+        
+        spdlog::info("SoulScout Telegram Gateway started in {} mode", config.gateway_mode);
+        g_gateway->run();
+        
+        spdlog::info("Gateway shutdown complete");
+        return 0;
+        
+    } catch (const std::exception& e) {
+        spdlog::error("Fatal error: {}", e.what());
+        return 1;
+    }
+}
